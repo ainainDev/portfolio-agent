@@ -2119,7 +2119,7 @@
           batao: 1, btao: 1, sunao: 1, chal: 1, haal: 1, kaise: 1,
           shukriya: 1, alvida: 1, mazak: 1, mausam: 1, rahe: 1, raha: 1,
           rahi: 1, haan: 1, theek: 1, badhiya: 1, zabardast: 1, kamaal: 1,
-          kamal: 1, mast: 1, salaam: 1, salam: 1, chai: 1, aur: 1
+          kamal: 1, mast: 1, salaam: 1, salam: 1, namaste: 1, chai: 1, aur: 1
         };
         function smallTalkLang(rawTokens, lang) {
           if (lang === "hi") return "hi";
@@ -2134,6 +2134,36 @@
           }
           return false;
         }
+        /* Pure greetings — "hi", "hii bro", "hey", "hello", "yo",
+           "namaste", "salaam bhai", "good morning": the WHOLE message
+           is greeting words plus casual filler (bro, bhai, there, his
+           name…). Elongated spellings ("hiii", "heyy", "helloo")
+           count. A message with real content in it ("hi, what are
+           your skills?") is NOT a pure greeting — it flows on to the
+           normal routing. handle() checks this with top priority, so
+           a greeting can never ride the brain call into the fallback. */
+        var GREET_WORDS = { hi: 1, hey: 1, hello: 1, yo: 1, namaste: 1, salaam: 1, salam: 1, hola: 1, howdy: 1 };
+        var GREET_FILL = { bro: 1, dude: 1, man: 1, bhai: 1, bhaiya: 1, yaar: 1, dost: 1,
+          there: 1, everyone: 1, everybody: 1, guys: 1, all: 1, sir: 1, ainain: 1,
+          good: 1, morning: 1, afternoon: 1, evening: 1 };
+        function isGreetWord(t) {
+          return !!GREET_WORDS[t] || /^h+i+$/.test(t) || /^he+y+$/.test(t) ||
+            /^hel+o+$/.test(t) || /^yo+$/.test(t);
+        }
+        function detectGreeting(rawTokens) {
+          var n = rawTokens.length;
+          if (!n || n > 5) return false;
+          var hasGood = false, i, t;
+          for (i = 0; i < n; i++) if (rawTokens[i] === "good") hasGood = true;
+          var greet = 0;
+          for (i = 0; i < n; i++) {
+            t = rawTokens[i];
+            if (isGreetWord(t)) greet++;
+            else if (hasGood && (t === "morning" || t === "afternoon" || t === "evening")) greet++;
+            else if (!GREET_FILL[t]) return false;
+          }
+          return greet >= 1;
+        }
         function detectSmallTalk(rawTokens) {
           var n = rawTokens.length;
           if (!n) return null;
@@ -2146,13 +2176,20 @@
           if (any(["thanks", "thank", "shukriya", "dhanyavad", "thx"])) return "thanks";
           if (any(["bye", "goodbye", "alvida", "tata"]) ||
               norm.indexOf("see you") !== -1 || norm.indexOf("see ya") !== -1) return "bye";
-          if (has.kaise || has.haal || has.salaam || has.salam ||
+          if (has.kaise || has.kaisa || has.haal || has.salaam || has.salam ||
               norm.indexOf("how are you") !== -1 || norm.indexOf("how r you") !== -1 ||
               norm.indexOf("how are u") !== -1 || norm.indexOf("how r u") !== -1 ||
-              norm.indexOf("how is life") !== -1) return "howru";
+              norm.indexOf("how is life") !== -1 || norm.indexOf("how s life") !== -1 ||
+              norm.indexOf("how is it going") !== -1 || norm.indexOf("how s it going") !== -1 ||
+              norm.indexOf("hows it going") !== -1 ||
+              norm.indexOf("how are things") !== -1 || norm.indexOf("how is everything") !== -1 ||
+              norm.indexOf("all good") !== -1 ||
+              norm.indexOf("sab theek") !== -1 || norm.indexOf("sab badhiya") !== -1 ||
+              norm.indexOf("sab changa") !== -1) return "howru";
           if (isMoreCasual(rawTokens) || (has.aur && n <= 2)) return "more";
           if (has.wassup || has.sup || norm.indexOf("whats up") !== -1 ||
-              norm.indexOf("what is up") !== -1 || norm.indexOf("chal raha") !== -1 ||
+              norm.indexOf("what is up") !== -1 || norm.indexOf("what up") !== -1 ||
+              norm.indexOf("chal raha") !== -1 ||
               norm.indexOf("ho raha hai") !== -1) return "whatsup";
           if (any(["chai", "coffee", "tea"])) return "drink";
           if (any(["lunch", "dinner", "breakfast", "brunch", "khana", "khaana", "nashta", "snack", "snacks"]) ||
@@ -2191,6 +2228,10 @@
           return !!COMPLIMENT_IDIOMS[core.join(" ")];
         }
         var ST_EN = {
+          greeting: [
+            "<p>Hey bro! Great to see you here — ask me anything about my work.</p>",
+            "<p>Hey there! I'm Ainain — good to see you. Ask me anything about my work, skills or projects.</p>"
+          ],
           howru: [
             "<p>I'm doing great, thanks for asking! Just here, chilling and ready to chat. How's your day going?</p>",
             "<p>All good on my side! Living the simple digital life. How about you — how are you doing?</p>"
@@ -2245,6 +2286,10 @@
           ]
         };
         var ST_HI = {
+          greeting: [
+            "<p>Arre bro! Kya haal hai? Mere kaam, skills ya projects ke baare mein kuch bhi puchho.</p>",
+            "<p>Namaste! Main Ainain hoon — mere baare mein jo janna ho, bejhijhak puchho.</p>"
+          ],
           howru: [
             "<p>Main ekdum badhiya hoon bhai! Tum sunao — tumhara din kaisa ja raha hai?</p>",
             "<p>Sab badhiya! Bas yahin hoon, tumse baat karne ke liye ready. Tum batao, kya haal?</p>"
@@ -2720,6 +2765,16 @@
                   "response parse failed: " + (e && e.message ? e.message : String(e)) +
                   " — body starts: " + String(txt || "").slice(0, 120));
               }
+              /* the Worker passes Gemini's JSON through as-is, so an
+                 upstream error can arrive as HTTP 200 with an error
+                 body instead of candidates — surface it as the HTTP
+                 failure it is, with its code, so the retry logic in
+                 brainPrimary can recognise a transient 429/503 */
+              if (data && data.error) {
+                throw stageError("gemini http",
+                  "error body (HTTP 200): " + (data.error.code || "?") + " " +
+                  String(data.error.message || data.error.status || "").slice(0, 220));
+              }
               if (!data || !data.candidates || !data.candidates.length) {
                 throw stageError("gemini shape",
                   "no candidates in response" +
@@ -2810,12 +2865,33 @@
             var html = brainTextToHtml(text);
             if (html) land(html); else localStand();
           }
-          /* a synchronous throw inside an ask fn (e.g. fetch missing)
-             must become a rejection, never a stuck typing row */
-          var gemCall, biCall;
-          try { gemCall = geminiAsk(rawText); }
-          catch (e) { gemCall = Promise.reject(e); }
-          withDeadline(gemCall, 30000, "gemini deadline: no response within 30s").then(aiLand, function () {
+          /* Gemini gets up to three attempts before anything gives
+             up on it: its common failures are transient — a 503 "high
+             demand" spike, a 429 quota window, an empty reply, a
+             network hiccup — and seconds later the same question
+             answers fine. Only after the retries does the built-in
+             AI get its chance, and only when that fails too does the
+             local fallback appear. A synchronous throw inside an ask
+             fn (e.g. fetch missing) becomes a rejection, never a
+             stuck typing row. */
+          function transientBrainError(err) {
+            var s = String((err && err.stage) || "") + " " + String((err && err.message) || err || "");
+            return /429|503|unavailable|resource_exhausted|quota|high demand|deadline|fetch|empty|overload|no candidates/i.test(s);
+          }
+          function geminiTry(attempt) {
+            var call;
+            try { call = geminiAsk(rawText); }
+            catch (e) { call = Promise.reject(e); }
+            return withDeadline(call, 25000, "gemini deadline: no response within 25s").catch(function (err) {
+              if (attempt >= 3 || !transientBrainError(err)) throw err;
+              var wait = attempt === 1 ? 1500 : 3000;
+              return new Promise(function (res) { setTimeout(res, wait); }).then(function () {
+                return geminiTry(attempt + 1);
+              });
+            });
+          }
+          geminiTry(1).then(aiLand, function () {
+            var biCall;
             try { biCall = builtinAsk(rawText); }
             catch (e) { biCall = Promise.reject(e); }
             withDeadline(biCall, 20000, "builtin deadline: no response within 20s").then(aiLand, function () {
@@ -2934,6 +3010,16 @@
           var ctx = { tokens: tokens, detail: wantsDetail(norm, tokens), forced: !!forcedIntent, lang: lang };
 
           if (forcedIntent) { ctx.detail = true; replyKey(forcedIntent, ctx); return; }
+
+          /* Greetings FIRST — before every other detector and long
+             before any fallback: a bare "hi" / "hii bro" / "namaste"
+             is the easiest message in the world and must always get a
+             warm greeting back in kind, never the brain's luck. */
+          if (detectGreeting(rawTokens)) {
+            lastWasProfile = false;
+            botReply(smallTalkHtml("greeting", smallTalkLang(rawTokens, lang)));
+            return;
+          }
 
           /* "Why should I hire you" — checked before any topic scoring:
              the pitch is a dedicated answer (angled to a named role), and
